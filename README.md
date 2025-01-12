@@ -3,6 +3,9 @@
 
 A work-in-progress NodeJS Sparx Maths completer using their own APIs!
 
+## Demo
+
+![Demo GIF](https://raw.githubusercontent.com/woody-willis/sparx-autocompleter/refs/heads/main/demo.gif)
 
 ## Installation
 
