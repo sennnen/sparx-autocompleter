@@ -85,9 +85,9 @@ async function getInput(question) {
 
     const username = process.env.SPARX_USERNAME;
     const password = process.env.SPARX_PASSWORD;
-    const schoolSlug = process.env.SPARX_SCHOOL;
+    const schoolName = process.env.SPARX_SCHOOL;
 
-    const school = schools.find(school => school.slug === schoolSlug);
+    const school = schools.find(school => school.name.toLowerCase() === schoolName.toLowerCase());
 
     const client = new Sparx(username, password, school);
 
