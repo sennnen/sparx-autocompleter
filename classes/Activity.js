@@ -141,11 +141,9 @@ function calculateMultipleChoiceAnswer(layoutInfo) {
  * @param {string} imageUrl - The image URL
  */
 async function getAnswerFromAI(question, layoutInfo, outputLength, imageUrl) {
-    await new Promise(resolve => setTimeout(resolve, 4000));
-
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-flash",
+        model: "gemini-1.5-pro",
         generationConfig: {
             temperature: 1,
             topP: 0.95,
@@ -180,41 +178,83 @@ async function getAnswerFromAI(question, layoutInfo, outputLength, imageUrl) {
             },
         },
     });
-
-    let answerScreen = '';
+    
+    let answerObject;
+    let answerScreenType;
     if (layoutInfo.layout.content.find(content => content.type.includes("answer"))) {
         const answerContent = layoutInfo.layout.content.find(content => content.type.includes("answer"));
-        const answerScreenInfo = answerContent.content.find(content => {
+
+        const answerScreenCheck = answerContent.content.find(content => {
             if (!content.type) return false;
             return content.type.includes("answer-screen");
         });
+        if (answerScreenCheck) {
+            answerObject = answerScreenCheck;
+            answerScreenType = "answer-screen";
+        }
 
-        if (answerScreenInfo) {
-            for (const answerPart of answerScreenInfo.content.filter(content => content.type.includes("answer-part"))) {
-                const fieldId = answerPart.content.find(content => content.element.includes("field")).ref;
-                const answerPartText = answerPart.content.find(content => content.element == "text")?.text || '';
+        const choicesCheck = answerContent.content.find(content => {
+            if (!content.type) return false;
+            return content.type.includes("choices");
+        });
+        if (choicesCheck) {
+            answerObject = choicesCheck;
+            answerScreenType = "choices";
+        }
+    }
 
-                answerScreen += `${fieldId}: ${answerPartText}\n`;
+    let prompt;
+    switch(answerScreenType) {
+        case "answer-screen":
+            let answerScreen = '';
+            for (const answerPart of answerObject.content.filter(content => content.type.includes("answer-part"))) {
+                const answerPartTextArray = [];
+                for (const answerPartContent of answerPart.content) {
+                    if (answerPartContent.element === "text") {
+                        answerPartTextArray.push(answerPartContent.text);
+                    } else if (answerPartContent.element === "slot") {
+                        answerPartTextArray.push(`[${answerPartContent.ref}:${answerPartContent.accept}]`);
+                    } else if (answerPartContent.element === "number-field") {
+                        answerPartTextArray.push(`(${answerPartContent.ref})`);
+                    }
+                }
+                
+                const answerPartText = answerPartTextArray.join(" ");
+                answerScreen += `Answer Part: ${answerPartText}\n`;
             }
-
-            if (answerScreen.length > 0 && answerScreenInfo.content.filter(content => content.type.includes("cards")).length > 0) {
-                answerScreen += "\n";
-            }
-
-            for (const cardsPart of answerScreenInfo.content.filter(content => content.type.includes("cards"))) {
+            
+            for (const cardsPart of answerObject.content.filter(content => content.type.includes("cards"))) {
                 const cardsId = cardsPart.id;
+                answerScreen += `${cardsId} Choices:\n`;
 
                 for (const cardPart of cardsPart.content.filter(content => content.element === "card")) {
                     const cardId = cardPart.ref;
                     const cardPartText = cardPart.content.find(content => content.element === "text").text;
 
-                    answerScreen += `${cardsId}: ${cardPartText} (${cardId})\n`;
+                    answerScreen += `${cardId}: ${cardPartText}\n`;
                 }
+
+                answerScreen += "\n";
             }
-        }
+
+            prompt = `You are now answering a question that may have choices and/or number inputs. Context about the answer is provided using the keyword 'Answer Part'. Choice groups are provided using the keyword 'Choices' proceeded by the 3 letter ID that will be used to refer to that group of choices. In the answer parts, where there are two 3 letter IDs surrounded by square brackets, the ID after the colon refers to a choice group. To select an option for this, append a new object to the output array where the ID is the 3 letter ID before the colon and the answer is the 3 letter ID of the choice you would like to choose within the choice group. Where there is a 3 letter ID surrounded by normal brackets, this denotes a number input field. To give an answer for this, append a new object to the output array with the ID being the 3 letter ID of the number field and the answer being the plain number without any symbols such as slashes etc. Make sure to follow these rules and solve the following question:\n\nQ: ${question}\n\n${answerScreen}`;
+
+            break;
+        case "choices":
+            let choices = '';
+            for (const choiceInfo of answerObject.content) {
+                choices += `${choiceInfo.ref}: ${choiceInfo.content[0].text}\n`;
+            }
+
+            prompt = `You are now answering a question with choices where you can select multiple. The options will are listed below. For each option that you want to select as a valid answer, append a new object to the output array with the ID being the 3 letter value and the answer being the exact value after the colon including but not limited to the dollar sign and latex syntax. Make sure to follow these rules and solve the following question:\n\nQ: ${question}\n\n${choices}`;
+
+            break;
     }
 
-    const prompt = `You must add a new element to the output array for each answer no matter the nesting. You have been given the 3 letter ID for each answer. Each ID must only be used once. If there are multiple of the same IDs but with different values below, another unique 3 letter ID will be placed within brackets next to the answer; in this case, the ID must be set to the 3 letters preceding the colon and the answer must be set to the 3 letters inside the brackets next to the corresponding answer that you pick: this means it is a multiple choice question. Answers must be in plain text without any explanation. Answers must not have any spaces in them. Do not describe how you got to the answer. The output array length must be exactly equal to ${outputLength}. You must split fractions at the slash in order to fulfill this length (e.g. [25/9] becomes [25, 9]). ${imageUrl ? 'Use the image to help answer the question as it provides vital information. ' : ''}If the question results in variables being equal to something, only output the plain number in the order that the variables appear in the question asked. Make sure to follow these rules and solve the following question:\n\n${question}\n\n${answerScreen}`;
+    if (!prompt) {
+        // console.log(JSON.stringify(layoutInfo));
+        return [];
+    }
 
     let image;
     if (imageUrl) {
@@ -231,11 +271,16 @@ async function getAnswerFromAI(question, layoutInfo, outputLength, imageUrl) {
         }
     }
 
+    // console.log(prompt);
+
+    await new Promise(resolve => setTimeout(resolve, 1000 * 30));
+
     const result = await model.generateContent(
         imageUrl ? [image, prompt] : [prompt]
     );
 
     const jsonOutput = JSON.parse(result.response.text());
+    // console.log(image ? true : false, jsonOutput);
 
     return jsonOutput.answers;
 }

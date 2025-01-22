@@ -1,11 +1,11 @@
 import { Sparx } from "./classes/Sparx.js";
-import { School, getSchools } from "./classes/School.js";
-import { encodeProto, TYPES } from "./classes/Protobuf.js";
+import { getSchools } from "./classes/School.js";
 
 import dotenv from "dotenv";
 dotenv.config();
 
 import readline from "node:readline";
+import fs from "node:fs";
 
 function loadingAnimation(
     text = "",
@@ -20,50 +20,6 @@ function loadingAnimation(
     }, delay);
 }
 
-// (async () => {
-//     const bodyProto = [
-//         {
-//             index: 2,
-//             type: TYPES.LENDELIM,
-//             value: [
-//                 {
-//                     index: 1,
-//                     type: TYPES.LENDELIM,
-//                     value: "5f7c0c53-0130-44fb-b718-56d83b27bd1e",
-//                 },
-//                 {
-//                     index: 2,
-//                     type: TYPES.VARINT,
-//                     value: 4,
-//                 },
-//                 {
-//                     index: 3,
-//                     type: TYPES.VARINT,
-//                     value: 4,
-//                 }
-//             ],
-//         },
-//         {
-//             index: 4,
-//             type: TYPES.LENDELIM,
-//             value: [
-//                 {
-//                     index: 1,
-//                     type: TYPES.VARINT,
-//                     value: Math.floor(new Date(Date.now() - Math.random() * 6 * 60000) / 1000),
-//                 },
-//                 {
-//                     index: 2,
-//                     type: TYPES.VARINT,
-//                     value: 632000000,
-//                 }
-//             ],
-//         }
-//     ];
-//     const encodedBody = Buffer.concat([Buffer.alloc(4), Buffer.alloc(1, 58), encodeProto(bodyProto)]);
-//     console.log(encodedBody.toString('base64'));
-// })();
-
 const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -77,19 +33,41 @@ async function getInput(question) {
     });
 }
 
+const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
 (async () => {
     const schoolsLoader = loadingAnimation("Fetching schools:");
     const schools = await getSchools();
     clearInterval(schoolsLoader);
     process.stdout.write("\r\x1b[32mFetching schools: ✓\x1b[0m\n");
 
+    let client;
+
     const username = process.env.SPARX_USERNAME;
     const password = process.env.SPARX_PASSWORD;
     const schoolName = process.env.SPARX_SCHOOL;
 
-    const school = schools.find(school => school.name.toLowerCase() === schoolName.toLowerCase());
+    if (username && password && schoolName) {
+        const school = schools.find(school => school.name.toLowerCase() === schoolName.toLowerCase());
 
-    const client = new Sparx(username, password, school);
+        if (!school) {
+            console.log("Invalid school.");
+            process.exit(1);
+        }
+
+        client = new Sparx(username, password, school);
+    } else if (process.env.SPARX_TOKENS) {
+        client = new Sparx(null, null, null, JSON.parse(Buffer.from(process.env.SPARX_TOKENS, "base64").toString("utf-8")));
+    } else {
+        console.log("Please provide the following environment variables:");
+        console.log("- SPARX_USERNAME");
+        console.log("- SPARX_PASSWORD");
+        console.log("- SPARX_SCHOOL");
+        // console.log("OR");
+        // console.log("- SPARX_TOKENS");
+        process.exit(1);
+    }
+
 
     process.on("uncaughtException", async error => {
         console.error(error);
@@ -176,6 +154,16 @@ async function getInput(question) {
                 process.stdout.write(`\r  ${j + 1}. \x1b[32m✓\x1b[0m\n`);
                 
                 amountOfTasksCompleted++;
+
+                if (!fs.existsSync("bookwork")) {
+                    fs.mkdirSync("bookwork");
+                }
+
+                const existingBookworkJson = fs.existsSync(`bookwork/${homework.name.replace(/\s/g, "-")}.json`) ? JSON.parse(fs.readFileSync(`bookwork/${homework.name.replace(/\s/g, "-")}.json`)) : {};
+
+                existingBookworkJson[`${i + 1}${alphabet[j]}`] = answers;
+
+                fs.writeFileSync(`bookwork/${homework.name.replace(/\s/g, "-")}.json`, JSON.stringify(existingBookworkJson, null, 4));
             } else {
                 // console.log(answers);
                 // console.log(JSON.stringify(activity.layout));

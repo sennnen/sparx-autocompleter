@@ -19,19 +19,25 @@ class Sparx {
      * @param {string} password - The password of the client
      * @param {School} school - The school of the client
      */
-    constructor(username, password, school) {
-        if (!username || !password || !school) {
-            throw new TypeError("You must provide a username, password, and school.");
+    constructor(username, password, school, cookies) {
+        if ((!username || !password || !school) && !cookies) {
+            throw new TypeError("You must provide a username, password, and school OR cookies.");
         }
 
         this.username = username;
         this.password = password;
         this.school = school;
+        this.usesCookies = false;
 
-        this.cookies = {
-            'live-resolver-school': this.school.slug,
-            'cookie_preferences': '{"GA":false,"Hotjar":false,"PT":false,"version":4}',
-        };
+        if (cookies) {
+            this.cookies = cookies;
+            this.usesCookies = true;
+        } else {
+            this.cookies = {
+                'live-resolver-school': this.school.slug,
+                'cookie_preferences': '{"GA":false,"Hotjar":false,"PT":false,"version":4}',
+            };
+        }
 
         this.token = null;
         this.sessionId = null;
@@ -69,7 +75,6 @@ class Sparx {
                     "Cookie": this._getCookies(),
                     "User-Agent": randUserAgent('desktop', 'chrome', 'windows'),
                 },
-                // agent: this.agent,
             }
         );
 
@@ -96,7 +101,6 @@ class Sparx {
                     "X-CSRF-TOKEN": this.cookies["sparxweb_csrf"],
                 },
                 credentials: "include",
-                // agent: this.agent,
             }
         );
         
@@ -118,11 +122,10 @@ class Sparx {
                     "Content-Type": "application/json",
                     "Cookie": this._getCookies(),
                     "X-CSRF-TOKEN": this.cookies["sparxweb_csrf"],
-                    "Referer": "https://www.sparxmaths.uk/",
+                    "Origin": "https://www.sparxmaths.uk/",
                     "User-Agent": randUserAgent('desktop'),
                 },
                 credentials: "include",
-                // agent: this.agent,
             }
         );
 
@@ -136,8 +139,6 @@ class Sparx {
 
     /** Perform the OAuth flow. */
     async _performOauthFlow(oauthRequestUrl) {
-        this.cookies['live-resolver-school'] = this.school.slug;
-
         const oauthHtmlPageResponse = await fetch(
             oauthRequestUrl,
             {
@@ -145,7 +146,6 @@ class Sparx {
                 headers: {
                     "Cookie": this._getCookies()
                 },
-                // agent: this.agent,
             }
         );
 
@@ -177,7 +177,6 @@ class Sparx {
                 }),
                 credentials: "include",
                 redirect: "manual",
-                // agent: this.agent,
             }
         );
 
@@ -189,19 +188,17 @@ class Sparx {
         }
 
         this._setCookies(oauthResponse);
-        this.cookies['live-resolver-school'] = this.school.slug;
 
-        const oauthLocation = new URL(oauthResponse.headers.get("Location"));
+        const oauthCallbackUrl = new URL(oauthResponse.headers.get("Location"));
 
         const oauthCallbackResponse = await fetch(
-            oauthLocation,
+            oauthCallbackUrl,
             {
                 method: "GET",
                 headers: {
                     "Cookie": this._getCookies()
                 },
                 redirect: "manual",
-                // agent: this.agent,
             }
         );
 
@@ -210,7 +207,6 @@ class Sparx {
         }
 
         this._setCookies(oauthCallbackResponse);
-        this.cookies['live-resolver-school'] = this.school.slug;
 
         const dashboardRequestUrl = `https://www.sparxmaths.uk/student/?s=${this.school.slug}`;
         const dashboardResponse = await fetch(
@@ -221,31 +217,22 @@ class Sparx {
                     "Cookie": this._getCookies()
                 },
                 redirect: "follow",
-                // agent: this.agent,
             }
         );
 
         if (dashboardResponse.url.includes('/oauth2/auth')) {
-            // await this._performOauthFlow(dashboardResponse.url);
+            throw new Error("Failed to login due to unexpected error.");
         }
     }
 
     /** Login to Sparx. */
     async login() {
-        // const cf = new Cloudflare("https://www.sparxmaths.uk/student/");
-        // const challengeShowingTest = await cf.isShowingChallenge();
+        if (!this.usesCookies) {
+            const oauthRequestUrl = await this._getOauthRequestUrl();
+            await this._performOauthFlow(oauthRequestUrl);
+        }
 
-        // if (challengeShowingTest.showing) {
-        //     throw new Error("Failed to login due to Cloudflare challenge showing. Are you using a VPN?");
-        // }
-
-        const oauthRequestUrl = await this._getOauthRequestUrl();
-
-        await this._performOauthFlow(oauthRequestUrl);
         await this._refreshToken();
-
-        // const login = new SparxLogin(this.username, this.password, this.school);
-        // const cookiesRequest = await login.getLoginCookies();
     }
 
     async logout() {
@@ -260,7 +247,6 @@ class Sparx {
                     "Content-Type": "application/grpc-web+proto",
                 },
                 credentials: "include",
-                // agent: this.agent,
             }
         );
 
@@ -286,7 +272,6 @@ class Sparx {
                     "x-session-id": this.sessionId,
                 },
                 body: bodyBuffer,
-                // agent: this.agent,
             }
         );
         
@@ -350,7 +335,6 @@ class Sparx {
                     "x-session-id": this.sessionId,
                 },
                 body: bodyBuffer,
-                // agent: this.agent,
             }
         );
         
@@ -429,7 +413,6 @@ class Sparx {
                     "x-session-id": this.sessionId,
                 },
                 body: fullBuffer,
-                // agent: this.agent,
             }
         );
 
@@ -527,7 +510,6 @@ class Sparx {
                     "x-session-id": this.sessionId,
                 },
                 body: fullBuffer,
-                // agent: this.agent,
             }
         );
         
@@ -536,6 +518,12 @@ class Sparx {
         }
 
         if (activitiesResponse.headers.get("grpc-status") !== null) {
+            if (activitiesResponse.headers.get("grpc-status") == '9') {
+                throw new Error("Autocompleter stopped because bookwork check required.");
+                // TODO: Implement auto bookwork check
+                // GetActivity & ActivityAction again for BW check
+            }
+
             throw new Error("Failed to get homework tasks with status " + activitiesResponse.headers.get("grpc-status"));
         }
 
@@ -611,7 +599,6 @@ class Sparx {
                     "x-session-id": this.sessionId,
                 },
                 body: fullBuffer,
-                // agent: this.agent,
             }
         );
 
@@ -712,7 +699,6 @@ class Sparx {
                     "x-session-id": this.sessionId,
                 },
                 body: fullBuffer,
-                // agent: this.agent,
             }
         );
 
