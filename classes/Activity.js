@@ -36,13 +36,13 @@ class Activity {
     }
 
     async getAnswers() {
-        if (this.layout[0].layout.type.includes("multiple-choice") || this.layout[0].layout.type.includes("multi-part")) {
-            // This quesion is a multiple choice question
-            const answers = calculateMultipleChoiceAnswer(this.layout[0]);
-            if (answers) {
-                return answers;
-            }
-        }
+        // if (this.layout[0].layout.type.includes("multiple-choice") || this.layout[0].layout.type.includes("multi-part")) {
+        //     // This quesion is a multiple choice question
+        //     const answers = calculateMultipleChoiceAnswer(this.layout[0]);
+        //     if (answers) {
+        //         return answers;
+        //     }
+        // }
 
         const question = this.layout[0].layout.content[0].content[0].content[0].text;
 
@@ -144,45 +144,23 @@ function calculateMultipleChoiceAnswer(layoutInfo) {
 async function getAnswerFromAI(question, layoutInfo, outputLength, imageUrl) {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     const model = genAI.getGenerativeModel({
-        model: "gemini-2.0-flash-exp",
+        model: "gemini-2.0-flash-thinking-exp-01-21",
         generationConfig: {
-            temperature: 1,
+            temperature: 0.7,
             topP: 0.95,
-            topK: 40,
-            maxOutputTokens: 8192,
-            responseMimeType: "application/json",
-            responseSchema: {
-                type: "object",
-                properties: {
-                    answers: {
-                        type: "array",
-                        items: {
-                            type: "object",
-                            properties: {
-                                id: {
-                                    type: "string"
-                                },
-                                answer: {
-                                    type: "string"
-                                }
-                            },
-                            required: [
-                                "id",
-                                "answer"
-                            ]
-                        }
-                    }
-                },
-                required: [
-                    "answers"
-                ]
-            },
+            topK: 64,
+            maxOutputTokens: 65536,
+            responseMimeType: "text/plain",
         },
+        tools: [{codeExecution: {}}],
     });
     
     let answerObject;
     let answerScreenType;
-    if (layoutInfo.layout.content.find(content => content.type.includes("answer"))) {
+    if (layoutInfo.layout.type.includes("free-answer")) {
+        answerObject = layoutInfo.layout.content[1].content[0];
+        answerScreenType = "number-field";
+    } else if (layoutInfo.layout.content.find(content => content.type.includes("answer"))) {
         const answerContent = layoutInfo.layout.content.find(content => content.type.includes("answer"));
 
         const answerScreenCheck = answerContent.content.find(content => {
@@ -230,7 +208,9 @@ async function getAnswerFromAI(question, layoutInfo, outputLength, imageUrl) {
 
                 for (const cardPart of cardsPart.content.filter(content => content.element === "card")) {
                     const cardId = cardPart.ref;
-                    const cardPartText = cardPart.content.find(content => content.element === "text").text;
+                    const cardPartText = cardPart.content.find(content => content.element === "text")?.text;
+
+                    if (!cardPartText) continue;
 
                     answerScreen += `${cardId}: ${cardPartText}\n`;
                 }
@@ -238,7 +218,7 @@ async function getAnswerFromAI(question, layoutInfo, outputLength, imageUrl) {
                 answerScreen += "\n";
             }
 
-            prompt = `You are now answering a question that may have choices and/or number inputs. Context about the answer is provided using the keyword 'Answer Part'. Choice groups are provided using the keyword 'Choices' proceeded by the 3 letter ID that will be used to refer to that group of choices. In the answer parts, where there are two 3 letter IDs surrounded by square brackets, the ID after the colon refers to a choice group. To select an option for this, append a new object to the output array where the ID is the 3 letter ID before the colon and the answer is the 3 letter ID of the choice you would like to choose within the choice group. Where there is a 3 letter ID surrounded by normal brackets, this denotes a number input field. To give an answer for this, append a new object to the output array with the ID being the 3 letter ID of the number field and the answer being the plain number without any symbols such as slashes etc. Make sure to follow these rules and solve the following question:\n\nQ: ${question}\n\n${answerScreen}`;
+            prompt = `You are now an expert programmer experienced in building simple scripts to calculate answers to complex problems. Design code that calculates an answer that follows this specific schema:\n\n{\n  type: "object",\n  properties: {\n    answers: {\n      type: "array",\n      items: {\n        type: "object",\n        properties: {\n          id: {\n            type: "string"\n          },\n        answer: {\n          type: "string"\n        }\n      },\n      required: [\n        "id",\n        "answer"\n      ]\n    }\n  }\n},\n  required: [\n    "answers"\n  ]\n}\n\nYou are now answering a question that may have choices and/or number inputs. Context about the answer is provided using the keyword 'Answer Part'. Choice groups are provided using the keyword 'Choices' proceeded by the 3 letter ID that will be used to refer to that group of choices. In the answer parts, where there are two 3 letter IDs surrounded by square brackets, the ID after the colon refers to a choice group. To select an option for this, append a new object to the output array where the ID is the 3 letter ID before the colon and the answer is the 3 letter ID of the choice you would like to choose within the choice group. Where there is a 3 letter ID surrounded by normal brackets, this denotes a number input field. To give an answer for this, append a new object to the output array with the ID being the 3 letter ID of the number field and the answer being the plain number without any symbols such as slashes etc. It is absolutely necessary that number inputs are the plain number with the only symbol allowed being a decimal point. Make sure to follow these rules and solve the following question:\n\nQ: ${question}\n\n${answerScreen}`;
 
             break;
         case "choices":
@@ -247,13 +227,19 @@ async function getAnswerFromAI(question, layoutInfo, outputLength, imageUrl) {
                 choices += `${choiceInfo.ref}: ${choiceInfo.content[0].text}\n`;
             }
 
-            prompt = `You are now answering a question with choices where you can select multiple. The options will are listed below. For each option that you want to select as a valid answer, append a new object to the output array with the ID being the 3 letter value and the answer being the exact value after the colon including but not limited to the dollar sign and latex syntax. Make sure to follow these rules and solve the following question:\n\nQ: ${question}\n\n${choices}`;
+            prompt = `You are now an expert programmer experienced in building simple scripts to calculate answers to complex problems. Design code that calculates an answer that follows this specific schema:\n\n{\n  type: "object",\n  properties: {\n    answers: {\n      type: "array",\n      items: {\n        type: "object",\n        properties: {\n          id: {\n            type: "string"\n          },\n        answer: {\n          type: "string"\n        }\n      },\n      required: [\n        "id",\n        "answer"\n      ]\n    }\n  }\n},\n  required: [\n    "answers"\n  ]\n}\n\nYou are now answering a question with choices where you can select multiple. The options will are listed below. For each option that you want to select as a valid answer, append a new object to the output array with the ID being the 3 letter value and the answer being the exact value after the colon including but not limited to the dollar sign and latex syntax. Make sure to follow these rules and solve the following question:\n\nQ: ${question}\n\n${choices}`;
+
+            break;
+        case "number-field":
+            const inputId = answerObject.ref;
+
+            prompt = `You are now an expert programmer experienced in building simple scripts to calculate answers to complex problems. Design code that calculates an answer that follows this specific schema:\n\n{\n  type: "object",\n  properties: {\n    answers: {\n      type: "array",\n      items: {\n        type: "object",\n        properties: {\n          id: {\n            type: "string"\n          },\n        answer: {\n          type: "string"\n        }\n      },\n      required: [\n        "id",\n        "answer"\n      ]\n    }\n  }\n},\n  required: [\n    "answers"\n  ]\n}\n\nYou are now answering a question that has number inputs. To give an answer for these, append a new object to the output array with the ID being the 3 letter ID of the number field and the answer being the plain number without any symbols such as slashes etc. It is absolutely necessary that number inputs are the plain number with the only symbol allowed being a decimal point. Make sure to follow these rules and solve the following question:\n\nQ: ${question}\n\n${inputId}: Number field`;
 
             break;
     }
 
     if (!prompt) {
-        // console.log(JSON.stringify(layoutInfo));
+        console.log(JSON.stringify(layoutInfo));
         return [];
     }
 
@@ -272,8 +258,6 @@ async function getAnswerFromAI(question, layoutInfo, outputLength, imageUrl) {
         }
     }
 
-    // console.log(prompt);
-
     // await new Promise(resolve => setTimeout(resolve, 1000 * 30));
     await new Promise(resolve => setTimeout(resolve, 1000 * 6));
 
@@ -281,10 +265,16 @@ async function getAnswerFromAI(question, layoutInfo, outputLength, imageUrl) {
         imageUrl ? [image, prompt] : [prompt]
     );
 
-    const jsonOutput = JSON.parse(result.response.text());
-    // console.log(image ? true : false, jsonOutput);
+    try {
+        const jsonMatches = result.response.text().match(/```[json|tool_outputs](.|\n)*?```/g);
+        const jsonOutput = JSON.parse(jsonMatches[jsonMatches.length - 1].replace(/```json/g, "").replace(/```/g, ""));
 
-    return jsonOutput.answers;
+        return jsonOutput.answers;
+    } catch (error) {
+        // console.log(prompt);
+        // console.log(result.response.text());
+        return [];
+    }
 }
 
 export { Activity };

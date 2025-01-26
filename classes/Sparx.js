@@ -527,7 +527,7 @@ class Sparx {
                     }
                 }
                 
-                throw new Error("Automatic bookwork completion failed.");
+                throw new Error("Automatic bookwork completion failed. Please restart autocompleter.");
             }
 
             throw new Error("Failed to get homework tasks with status " + activitiesResponse.headers.get("grpc-status"));
@@ -612,9 +612,9 @@ class Sparx {
             throw new Error("Failed to register activity start.");
         }
 
-        if (registerResponse.headers.get("grpc-status") !== null) {
-            throw new Error("Failed to register activity start with status " + registerResponse.headers.get("grpc-status"));
-        }
+        // if (registerResponse.headers.get("grpc-status") !== null) {
+        //     throw new Error("Failed to register activity start with status " + registerResponse.headers.get("grpc-status"));
+        // }
     }
 
     async submitAnswer(homework, activityIndex, answers, bookworkCode) {
@@ -711,9 +711,9 @@ class Sparx {
             throw new Error("Failed to submit answer.");
         }
 
-        if (answerResponse.headers.get("grpc-status") !== null) {
-            throw new Error("Failed to submit answer with status " + answerResponse.headers.get("grpc-status"));
-        }
+        // if (answerResponse.headers.get("grpc-status") !== null) {
+        //     throw new Error("Failed to submit answer with status " + answerResponse.headers.get("grpc-status"));
+        // }
 
         const answer = await answerResponse.blob();
         const completeDecodedProto = decodeProtoRecursive(Buffer.from(await answer.arrayBuffer()));
@@ -972,14 +972,10 @@ class Sparx {
             throw new Error("Failed to submit bookwork check.");
         }
 
-        if (answerResponse.headers.get("grpc-status") !== null) {
-            throw new Error("Failed to submit bookwork check with status " + answerResponse.headers.get("grpc-status"));
-        }
-
         const answer = await answerResponse.blob();
         const completeDecodedProto = decodeProtoRecursive(Buffer.from(await answer.arrayBuffer()));
 
-        return completeDecodedProto.find(value => value.index === 1).value.find(value => value.index === 2).value == "SUCCESS";
+        return completeDecodedProto.find(value => value.index === 1)?.value.find(value => value.index === 2)?.value == "SUCCESS";
     }
 
     async completeBookworkCheck(packageId, taskIndex, activityIndex) {
@@ -1003,7 +999,14 @@ class Sparx {
 
         const bookworkXml = bookworkStore[bookworkInfo.find(value => value.index === 4).value];
 
-        const correctBookwork = bookworkOptions.find(value => value.value.find(option => option.index === 2).value == bookworkXml).value;
+        let correctBookwork;
+
+        if (bookworkXml) {
+            correctBookwork = bookworkOptions.find(value => value.value.find(option => option.index === 2).value == bookworkXml).value;
+        } else {
+            correctBookwork = bookworkOptions[Math.floor(Math.random() * bookworkOptions.length)].value;
+        }
+
         const correctBookworkParts = correctBookwork.find(option => option.index === 1).value;
 
         const bookworkCorrect = await this.sendBookworkCheck(correctBookworkParts, bookworkXml);
