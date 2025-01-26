@@ -64,8 +64,8 @@ class Activity {
         return answers;
     }
 
-    async submitAnswers(answers) {
-        return this.client.submitAnswer(this.activityIndex, answers);
+    async submitAnswers(homework, answers, bookworkCode) {
+        return this.client.submitAnswer(homework, this.activityIndex, answers, bookworkCode);
     }
 }
 
@@ -143,7 +143,7 @@ function calculateMultipleChoiceAnswer(layoutInfo) {
 async function getAnswerFromAI(question, layoutInfo, outputLength, imageUrl) {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-pro",
+        model: "gemini-2.0-flash-exp",
         generationConfig: {
             temperature: 1,
             topP: 0.95,
@@ -273,7 +273,8 @@ async function getAnswerFromAI(question, layoutInfo, outputLength, imageUrl) {
 
     // console.log(prompt);
 
-    await new Promise(resolve => setTimeout(resolve, 1000 * 30));
+    // await new Promise(resolve => setTimeout(resolve, 1000 * 30));
+    await new Promise(resolve => setTimeout(resolve, 1000 * 6));
 
     const result = await model.generateContent(
         imageUrl ? [image, prompt] : [prompt]

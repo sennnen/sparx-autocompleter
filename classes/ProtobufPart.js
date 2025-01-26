@@ -64,7 +64,12 @@ export function decodeStringOrBytes(value) {
   }
   const td = new TextDecoder("utf-8", { fatal: true });
   try {
-    return { type: "string", value: td.decode(value) };
+    const decodedString = td.decode(value);
+    if (decodedString.match(/[\x00-\x08\x0E-\x1F]/)) {
+      return { type: "bytes", value: value };
+    }
+
+    return { type: "string", value: decodedString };
   } catch (e) {
     return { type: "bytes", value: value };
   }

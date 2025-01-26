@@ -10,7 +10,7 @@ A work-in-progress Sparx Maths completer using their own APIs!
 | Feature          | Working |
 |------------------|---------|
 | Answer Questions | ⏳      |
-| Bookwork Checks  |         |
+| Bookwork Checks  | ✅      |
 | Times Tables     |         |
 | Sparx Reader     |         |
 | Sparx Science    |         |

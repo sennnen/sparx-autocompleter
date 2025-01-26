@@ -5,7 +5,6 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import readline from "node:readline";
-import fs from "node:fs";
 
 function loadingAnimation(
     text = "",
@@ -147,23 +146,13 @@ const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
                 continue;
             }
 
-            const submissionSuccess = await activity.submitAnswers(answers);
+            const submissionSuccess = await activity.submitAnswers(homework, answers, `${i + 1}${alphabet[j]}`);
 
             if (submissionSuccess) {
                 clearInterval(loader);
                 process.stdout.write(`\r  ${j + 1}. \x1b[32m✓\x1b[0m\n`);
                 
                 amountOfTasksCompleted++;
-
-                if (!fs.existsSync("bookwork")) {
-                    fs.mkdirSync("bookwork");
-                }
-
-                const existingBookworkJson = fs.existsSync(`bookwork/${homework.name.replace(/\s/g, "-")}.json`) ? JSON.parse(fs.readFileSync(`bookwork/${homework.name.replace(/\s/g, "-")}.json`)) : {};
-
-                existingBookworkJson[`${i + 1}${alphabet[j]}`] = answers;
-
-                fs.writeFileSync(`bookwork/${homework.name.replace(/\s/g, "-")}.json`, JSON.stringify(existingBookworkJson, null, 4));
             } else {
                 // console.log(answers);
                 // console.log(JSON.stringify(activity.layout));
@@ -173,6 +162,8 @@ const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
             }
         }
     }
+
+    homework.completedAmountOfQuestions == homework.completedAmountOfQuestions || 0;
 
     const newTotalAmountCompleted = homework.completedAmountOfQuestions + amountOfTasksCompleted;
 
