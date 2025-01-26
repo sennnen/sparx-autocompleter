@@ -1,6 +1,7 @@
 import { Sparx } from "./Sparx.js";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import fs from "fs";
+import vm from "vm";
 
 /** Class representing an Activity. */
 class Activity {

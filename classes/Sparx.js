@@ -3,11 +3,9 @@ import { HttpProxyAgent } from 'http-proxy-agent';
 import fetch from 'node-fetch';
 import randUserAgent from "rand-user-agent";
 
-import { SparxLogin } from "./SparxLogin.js";
 import { School } from "./School.js";
 import { Homework, HomeworkTask } from "./Homework.js";
 import { Activity } from "./Activity.js";
-import { Cloudflare } from "./Cloudflare.js";
 import { decodeProtoRecursive, TYPES, encodeProto } from "./Protobuf.js";
 
 import fs from "node:fs";
